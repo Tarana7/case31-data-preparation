@@ -1,0 +1,371 @@
+---
+title: "Case 31: Data Preparation"
+subtitle: "Employees Federal Credit Union"
+author: "Timothy Arana"
+institute: "IBM 6500, Cal Poly Pomona"
+date: today
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-tools: true
+    embed-resources: true
+
+editor: visual
+
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Introduction
+
+This report documents the data preparation process for Case 31: Employees Federal Credit Union (EFCU).
+
+The purpose is to prepare survey responses for statistical analysis by examining variable labels, measurement scales, missing values, and response coding.
+
+The preparation process follows Professor Jung's Case 31 workshop and uses R and Quarto to create a reproducible report.
+
+# Importing the Dataset
+
+## Loading Required Packages
+
+```{r}
+library(haven)
+library(dplyr)
+```
+
+## Reading the SPSS Data
+
+```{r}
+case31 <- read_sav("data/Case 31 Data_efcu_1.sav")
+
+dim(case31)
+names(case31)
+```
+
+## Initial Data Inspection
+
+```{r}
+head(case31)
+summary(case31)
+```
+
+# Creating a Data Dictionary
+
+A data dictionary helps researchers understand the meaning of each variable, its data type, and its response categories.
+
+The Case 31 questionnaire provides the original questions and coding information needed to interpret the dataset correctly.
+
+```{r}
+library(labelled)
+
+data_dictionary <- labelled::look_for(case31)
+
+data_dictionary
+```
+
+# Measurement Scales
+
+Understanding measurement scales is important because the type of variable determines which statistical methods are appropriate.
+
+## Ordinal Variables
+
+Ordinal variables contain categories with a meaningful order.
+
+In Case 31, questions Q3–Q6 measure employee service characteristics using a five-point agreement scale.
+
+Questions Q7–Q8 and Q37 also use ordered response categories.
+
+## Nominal Variables
+
+Nominal variables represent categories without a meaningful numerical ranking.
+
+For example, Q27 identifies whether a member currently has a loan with the credit union, while Q38 identifies whether the respondent lives in the headquarters area.
+
+## Examining Variable Labels
+
+```{r}
+haven::as_factor(case31$q3) |> table(useNA = "ifany")
+
+haven::as_factor(case31$q7) |> table(useNA = "ifany")
+
+haven::as_factor(case31$q37) |> table(useNA = "ifany")
+
+haven::as_factor(case31$q38) |> table(useNA = "ifany")
+```
+
+These frequency tables help verify that the numerical values correspond to the correct response categories.
+
+## Reflection
+
+I learned that identifying measurement scales is an important part of preparing survey data. Although Likert-scale responses are stored as numbers, they represent ordered categories rather than continuous measurements.
+
+Understanding these differences helps researchers select appropriate analytical techniques and avoid misinterpreting survey responses.
+
+# Checking Missing Values
+
+Before recoding variables, I examined missing responses and special response codes to determine which values should be retained or treated as missing.
+
+## Missing Values by Variable
+
+```{r}
+missing_summary <- data.frame(
+  Variable = names(case31),
+  Missing = sapply(case31, function(x) sum(is.na(x)))
+)
+
+missing_summary
+```
+
+## Checking Special Response Codes
+
+```{r}
+table(case31$q7, useNA = "ifany")
+table(case31$q8, useNA = "ifany")
+table(case31$q37, useNA = "ifany")
+```
+
+These tables help identify missing values and response categories that may require recoding before analysis.
+
+# Preparing a Cleaned Dataset
+
+The original SPSS dataset is preserved to maintain data integrity. A separate working copy is created for cleaning and recoding.
+
+## Creating a Working Copy
+
+```{r}
+case31_clean <- case31
+
+dim(case31_clean)
+```
+
+## Reviewing Special Response Codes
+
+```{r}
+table(case31_clean$q7, useNA = "ifany")
+table(case31_clean$q8, useNA = "ifany")
+table(case31_clean$q37, useNA = "ifany")
+```
+
+The questionnaire identifies special response categories that must be distinguished from valid ratings before analysis.
+
+# Verifying Response Codes
+
+The questionnaire uses different numerical coding schemes. I checked the observed values before recoding to avoid changing valid responses.
+
+```{r}
+variables_to_check <- c(
+  "q3", "q4", "q5", "q6",
+  "q7", "q8",
+  "q30", "q31", "q32", "q33", "q34",
+  "q37"
+)
+
+lapply(case31_clean[variables_to_check], function(x) {
+  table(as.numeric(x), useNA = "ifany")
+})
+```
+
+# Recoding Survey Variables
+
+The Case 31 questionnaire uses different response scales. Some variables require reverse coding to make their direction easier to interpret.
+
+The original variables are preserved, and new variables are created for analysis.
+
+## Reverse Coding Interest Rate Evaluations
+
+```{r}
+case31_clean <- case31_clean |>
+  mutate(
+    q7_reverse = 6 - as.numeric(q7),
+    q8_reverse = 6 - as.numeric(q8)
+  )
+
+summary(case31_clean[, c("q7_reverse", "q8_reverse")])
+```
+
+The reversed variables range from 1 to 5, with higher values representing perceptions of lower interest rates.
+
+Missing values remain missing.
+
+## Reverse Coding Overall Evaluation
+
+```{r}
+case31_clean <- case31_clean |>
+  mutate(
+    q37_reverse = 6 - as.numeric(q37)
+  )
+
+table(case31_clean$q37_reverse, useNA = "ifany")
+```
+
+The reversed overall evaluation variable ranges from 1 to 5, where higher scores indicate more favorable evaluations of the credit union.
+
+## Reflection
+
+This process demonstrated why researchers must examine the original questionnaire before recoding variables.
+
+Although the survey responses are stored numerically, the direction and meaning of the scales differ across questions.
+
+Creating separate reversed variables preserves the original responses while making subsequent analysis easier to interpret.
+
+# Evaluating Employee Proficiency and Operational Efficiency
+
+The Case 31 questionnaire contains multiple questions related to employee performance and credit union operations.
+
+Before creating composite measures, I examined the relationships among the survey items.
+
+## Employee Proficiency
+
+Questions Q3–Q6 measure employee courtesy, helpfulness, professionalism, and availability.
+
+```{r}
+employee_items <- case31_clean |>
+  select(q3, q4, q5, q6) |>
+  mutate(across(everything(), as.numeric))
+
+cor(employee_items, use = "pairwise.complete.obs")
+```
+
+## Operational Efficiency
+
+Questions Q30–Q34 measure different aspects of credit union operations.
+
+```{r}
+operations_items <- case31_clean |>
+  select(q30, q31, q32, q33, q34) |>
+  mutate(across(everything(), as.numeric))
+
+cor(operations_items, use = "pairwise.complete.obs")
+```
+
+## Interpretation
+
+Correlation analysis helps determine whether survey items are related enough to consider combining them into composite measures.
+
+Strong positive correlations suggest that items may reflect a common underlying concept. However, correlation alone does not establish reliability or construct validity.
+
+Further evaluation is necessary before deciding whether all items should be combined.
+
+# Reliability Analysis
+
+Cronbach's alpha was used to examine the internal consistency of the survey items measuring employee proficiency and operational efficiency.
+
+## Employee Proficiency Reliability
+
+```{r}
+library(psych)
+
+employee_alpha <- psych::alpha(employee_items)
+
+employee_alpha$total$raw_alpha
+```
+
+## Operational Efficiency Reliability
+
+```{r}
+operations_alpha <- psych::alpha(operations_items)
+
+operations_alpha$total$raw_alpha
+```
+
+## Interpretation
+
+Cronbach's alpha helps determine whether multiple survey items consistently measure a related concept.
+
+Values around 0.70 or higher are commonly considered acceptable for exploratory research, although the appropriate threshold depends on the research context.
+
+The reliability results will help determine whether composite measures are appropriate for the Case 31 dataset.
+
+## Operational Efficiency Item Analysis
+
+The operational efficiency scale showed relatively low internal consistency. I examined how Cronbach's alpha would change if individual items were removed.
+
+```{r}
+operations_alpha$alpha.drop
+```
+
+# Creating Composite Measures
+
+## Employee Proficiency Composite
+
+The four employee proficiency items demonstrated good internal consistency (Cronbach's alpha = 0.866).
+
+Therefore, I created a composite score using the average of Q3–Q6.
+
+```{r}
+case31_clean$employee_proficiency <- rowMeans(
+  case31_clean[, c("q3", "q4", "q5", "q6")],
+  na.rm = TRUE
+)
+
+summary(case31_clean$employee_proficiency)
+```
+
+Higher composite scores indicate more favorable perceptions of employee courtesy, helpfulness, professionalism, and availability.
+
+## Operational Efficiency Decision
+
+The five operational efficiency items demonstrated low internal consistency (Cronbach's alpha = 0.539).
+
+Removing individual items did not improve reliability. Therefore, I retained Q30–Q34 as separate variables rather than creating a combined operational efficiency index.
+
+This decision preserves the individual information provided by each survey question and avoids combining items that may represent different aspects of credit union operations.
+
+# Saving the Cleaned Dataset
+
+## Labelling the Composite Variable
+
+The employee proficiency composite represents the average rating of employee courtesy, helpfulness, professionalism, and availability.
+
+```{r}
+labelled::var_label(case31_clean$employee_proficiency) <-
+  "Employee Proficiency Composite (Q3-Q6)"
+
+labelled::var_label(case31_clean$employee_proficiency)
+```
+
+## Exporting the Prepared Data
+
+The cleaned dataset is saved separately from the original SPSS file to preserve the raw responses.
+
+```{r}
+haven::write_sav(
+  case31_clean,
+  "data/Case31-Cleaned.sav"
+)
+
+dim(case31_clean)
+```
+
+The exported dataset retains the original survey variables and includes the newly created variables for subsequent analysis.
+
+# Conclusion
+
+This assignment helped me understand the importance of preparing survey data before conducting statistical analysis.
+
+Using R and Quarto, I imported the Case 31 SPSS dataset, examined variable labels and measurement scales, identified missing values, and created reverse-coded variables.
+
+I also evaluated the reliability of two proposed constructs: Employee Proficiency and Operational Efficiency.
+
+The Employee Proficiency scale demonstrated good internal consistency (Cronbach's alpha = 0.866), supporting the creation of a composite score. The average Employee Proficiency rating was 4.21 out of 5.
+
+In contrast, Operational Efficiency demonstrated lower internal consistency (Cronbach's alpha = 0.539). Therefore, I retained its original items rather than combining them into a single index.
+
+The prepared dataset was exported as a separate SPSS file to preserve the original responses and support future analysis.
+
+# Appendix
+
+## GitHub Pages
+
+[View My Case 31 Data Preparation Report](https://tarana7.github.io/case31-data-preparation/)
+
+## GitHub Repository
+
+[View My Case 31 Data Preparation Repository](https://github.com/tarana7/case31-data-preparation)
